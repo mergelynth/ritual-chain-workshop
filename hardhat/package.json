@@ -1,0 +1,23 @@
+{
+  "name": "hardhat",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "compile": "hardhat compile",
+    "test": "hardhat test",
+    "sync-abi": "hardhat compile && tsx scripts/sync-abi.ts",
+    "deploy:local": "hardhat ignition deploy ignition/modules/AIJudge.ts --network hardhatMainnet",
+    "deploy:sepolia": "hardhat ignition deploy ignition/modules/AIJudge.ts --network sepolia",
+    "deploy:ritual": "hardhat ignition deploy ignition/modules/AIJudge.ts --network ritual"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-ignition": "^3.1.7",
+    "@nomicfoundation/hardhat-toolbox-viem": "^5.0.7",
+    "@types/node": "^22.20.0",
+    "forge-std": "github:foundry-rs/forge-std#v1.9.4",
+    "hardhat": "^3.9.0",
+    "tsx": "^4.19.2",
+    "typescript": "~6.0.3",
+    "viem": "^2.53.1"
+  }
+}

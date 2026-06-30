@@ -1,0 +1,64 @@
+########################
+# OS
+########################
+.DS_Store
+Thumbs.db
+
+########################
+# Node
+########################
+**/node_modules
+.pnpm-store
+
+########################
+# Env
+########################
+.env
+.env.*
+!.env.example
+
+########################
+# Next.js
+########################
+**/.next
+**/out
+**/build
+**/*.tsbuildinfo
+**/next-env.d.ts
+
+########################
+# Hardhat
+########################
+**/artifacts
+**/cache
+**/typechain-types
+**/types
+**/coverage
+**/.gas-snapshot
+**/pnpm-workspace.yaml
+
+########################
+# Ignition
+########################
+**/ignition/deployments
+
+########################
+# Logs
+########################
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+########################
+# IDE
+########################
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+
+.idea
+
+########################
+# Misc
+########################
+*.pem
