@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react"
+import { useEffect, useState } from "react"
 import { useAccount } from "wagmi"
 
 import aiJudgeAbi from "@/abi/AIJudge"
@@ -22,6 +22,11 @@ import {
 
 const explorerBase = ritualChain.blockExplorers?.default.url;
 
+type SavedCommitment = {
+  answer: string;
+  salt: `0x${string}`;
+};
+
 export function RevealAnswer({
   bountyId,
   bounty,
@@ -31,33 +36,40 @@ export function RevealAnswer({
   bounty: Bounty;
   onRevealed: () => void;
 }) {
-  const { address, isConnected } = useAccount();
+  const { isConnected } = useAccount();
   const now = useNow();
 
+  const [saved, setSaved] = useState<SavedCommitment | null>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const raw = localStorage.getItem(`bounty-${bountyId.toString()}`);
+
+    if (!raw) {
+      setSaved(null);
+      return;
+    }
+
+    try {
+      setSaved(JSON.parse(raw));
+    } catch {
+      setSaved(null);
+    }
+  }, [bountyId]);
+
   const tx = useWriteTx(() => {
-    localStorage.removeItem(`bounty-${bountyId.toString()}`);
+    if (typeof window !== "undefined") {
+      localStorage.removeItem(`bounty-${bountyId.toString()}`);
+    }
+
+    setSaved(null);
     onRevealed();
   });
 
   if (!canReveal(bounty, now / 1000)) {
     return null;
   }
-
-  const saved = useMemo(() => {
-    if (typeof window === "undefined") return null;
-
-    const raw = localStorage.getItem(`bounty-${bountyId.toString()}`);
-    if (!raw) return null;
-
-    try {
-      return JSON.parse(raw) as {
-        answer: string;
-        salt: `0x${string}`;
-      };
-    } catch {
-      return null;
-    }
-  }, [bountyId]);
 
   async function handleReveal() {
     if (!saved || !contractAddress) return;
@@ -74,7 +86,9 @@ export function RevealAnswer({
         ],
         chainId: ritualChain.id,
       });
-    } catch {}
+    } catch {
+      // error handled by useWriteTx
+    }
   }
 
   return (
@@ -87,12 +101,12 @@ export function RevealAnswer({
       <CardBody className="space-y-3">
         {!saved ? (
           <Notice tone="amber">
-            No locally stored commitment was found for this wallet.
+            No locally stored commitment was found for this bounty.
           </Notice>
         ) : (
           <>
-            <div className="rounded-xl bg-black/20 border border-white/10 p-3">
-              <div className="text-xs uppercase tracking-wide text-zinc-500 mb-2">
+            <div className="rounded-xl border border-white/10 bg-black/20 p-3">
+              <div className="mb-2 text-xs uppercase tracking-wide text-zinc-500">
                 Stored answer
               </div>
 

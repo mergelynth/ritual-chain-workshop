@@ -49,13 +49,19 @@ export function SubmitAnswer({
 
     if (!address || !answer.trim() || !contractAddress) return;
 
-    const bytes = crypto.getRandomValues(new Uint8Array(32));
-		const salt = bytesToHex(bytes);
+    const salt = bytesToHex(crypto.getRandomValues(new Uint8Array(32)));
 
+    // Must exactly match:
+    // keccak256(abi.encodePacked(answer, salt, msg.sender, bountyId))
     const commitment = keccak256(
       encodePacked(
-        ["string", "bytes32", "address"],
-        [answer.trim(), salt as `0x${string}`, address]
+        ["string", "bytes32", "address", "uint256"],
+        [
+          answer.trim(),
+          salt as `0x${string}`,
+          address,
+          bountyId,
+        ]
       )
     );
 
