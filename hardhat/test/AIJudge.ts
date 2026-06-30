@@ -1,13 +1,13 @@
-import { network } from "hardhat";
-import { describe, it, beforeEach } from "node:test";
-import assert from "node:assert/strict";
+import { network } from "hardhat"
+import assert from "node:assert/strict"
+import { describe, it } from "node:test"
 import {
-  encodePacked,
-  keccak256,
-  toHex,
-  parseEther,
-  type Hex,
-} from "viem";
+	encodePacked,
+	keccak256,
+	parseEther,
+	toHex,
+	type Hex,
+} from "viem"
 
 const { viem, networkHelpers } = await network.create();
 
@@ -50,14 +50,29 @@ async function installMockPrecompile() {
 
 async function deployAIJudge() {
   await installMockPrecompile();
-  const aiJudge = await viem.deployContract("AIJudge");
-  const [owner, alice, bob, carol] = await viem.getWalletClients();
-  return { aiJudge, owner, alice, bob, carol };
+
+  const deployed = await viem.deployContract("AIJudge");
+
+  const aiJudge = await viem.getContractAt(
+    "AIJudge",
+    deployed.address,
+  );
+
+  const [owner, alice, bob, carol] =
+    await viem.getWalletClients();
+
+  return {
+    aiJudge,
+    owner,
+    alice,
+    bob,
+    carol,
+  };
 }
 
 /** Creates a bounty with a 1h submission window and 1h reveal window. */
 async function createBounty(
-  aiJudge: Awaited<ReturnType<typeof viem.deployContract>>,
+  aiJudge: Awaited<ReturnType<typeof deployAIJudge>>["aiJudge"],
   reward = parseEther("1"),
 ) {
   const now = BigInt(await networkHelpers.time.latest());
