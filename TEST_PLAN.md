@@ -1,75 +1,440 @@
-# Test Plan — AIJudge Commit-Reveal
+# Test Plan
 
-Full automated coverage lives in `hardhat/test/AIJudge.ts` (run with
-`npx hardhat test`). This document summarizes the cases covered and why each
-matters, as required by the homework deliverables.
+## Overview
 
-## Bounty creation
+This document describes the testing strategy for the Privacy-Preserving AI Bounty Judge.
 
-| Case | Expected result | Why it matters |
-|---|---|---|
-| Valid title/rubric/deadlines + reward > 0 | Bounty created, `BountyCreated` emitted with correct args | Baseline happy path |
-| `msg.value == 0` | Reverts `"reward required"` | No bounty should exist without funds to pay a winner |
-| `revealDeadline <= submissionDeadline` | Reverts `"reveal deadline before submission deadline"` | Prevents a malformed bounty where reveal never has a valid window |
+The focus is validating the commit-reveal workflow, access control, deadline enforcement, AI judging, and reward distribution.
 
-## Commitment phase (`submitCommitment`)
+---
 
-| Case | Expected result | Why it matters |
-|---|---|---|
-| Commit before `submissionDeadline` | Accepted, `AnswerCommitted` emitted, commitment hash stored | Core hidden-submission path |
-| Read bounty/commitment state right after committing | No plaintext answer retrievable anywhere (`getSubmission` reverts, `revealedCount == 0`) | Proves answers are genuinely hidden, not just unlabeled |
-| Same participant commits twice | Reverts `"already committed"` | One submission per participant per bounty |
-| Commit after `submissionDeadline` | Reverts `"submission phase closed"` | Enforces the hidden-submission window boundary |
+# Test Environment
 
-## Reveal phase (`revealAnswer`)
+## Smart Contract
 
-| Case | Expected result | Why it matters |
-|---|---|---|
-| Reveal before `submissionDeadline` | Reverts `"reveal phase not started"` | Reveals can't leak answers early |
-| Reveal with correct `(answer, salt)` during the window | Accepted, `AnswerRevealed` emitted, answer becomes readable via `getSubmission` | Core reveal correctness |
-| Reveal with wrong answer or wrong salt | Reverts `"commitment mismatch"` | Hash check must actually validate input |
-| Reveal with no prior commitment (e.g. uninvolved account) | Reverts `"no commitment found"` | Can't reveal something you never committed |
-| Reveal someone else's known `(answer, salt)` pair from a different account | Reverts `"commitment mismatch"` | Confirms `msg.sender` is bound into the hash, so a copied commitment can't be claimed by another participant |
-| Reveal the same commitment twice | Reverts `"already revealed"` | Prevents duplicate submission entries |
-| Reveal after `revealDeadline` | Reverts `"reveal phase closed"` | Enforces the reveal window boundary |
-| One participant reveals, another doesn't | Only the revealed answer appears in `submissions`; `commitmentCount` still reflects both | Confirms a no-show's answer is never exposed and never judged |
+- Solidity
+- Hardhat
+- Viem
+- Ritual Chain
 
-## Judging (`judgeAll`)
+## Frontend
 
-| Case | Expected result | Why it matters |
-|---|---|---|
-| Judge before `revealDeadline` | Reverts `"reveal phase not finished"` | Judging can't start while reveals are still possible |
-| Judge as a non-owner | Reverts `"not bounty owner"` | Only the bounty owner can trigger judging / spend the LLM call |
-| Judge with zero revealed submissions | Reverts `"no revealed submissions"` | Nothing to judge if everyone ghosted the reveal phase |
-| Judge with >=1 revealed submission, after `revealDeadline` | `AllAnswersJudged` emitted, `bounty.judged == true`, `aiReview` populated from a single batched precompile call | Core judging correctness; verifies the single-call batching contract requirement |
-| Judge twice | Reverts `"already judged"` | Judging is a one-time, irreversible action |
+- Next.js
+- React
+- Wagmi
+- MetaMask
+- Ritual Wallet
 
-The Ritual LLM inference precompile (`0x0802`) is mocked locally via
-`MockLLMPrecompile` + `testClient.setCode`, so these tests exercise the real
-`abi.decode` path against a deterministic response without needing a live
-Ritual devnet (see `hardhat/README.md` for details).
+---
 
-## Finalization (`finalizeWinner`)
+# Functional Tests
 
-| Case | Expected result | Why it matters |
-|---|---|---|
-| Finalize before judging | Reverts `"not judged yet"` | Can't pay out before the AI has ranked submissions |
-| Finalize as non-owner | Reverts `"not bounty owner"` | Only the owner can trigger payout |
-| Finalize with an out-of-range winner index | Reverts `"invalid winner index"` | Prevents indexing into a non-existent submission / undefined winner address |
-| Finalize with a valid index | `WinnerFinalized` emitted, winner's balance increases by exactly the reward, contract balance decreases by the same amount, `bounty.finalized == true`, `bounty.reward == 0` | Core payout correctness; uses `viem.assertions.balancesHaveChanged` to verify the exact transfer amount |
-| Finalize twice | Reverts `"already finalized"` | Reward can only be paid once |
+## 1. Create Bounty
 
-## Helper
+### Goal
 
-| Case | Expected result | Why it matters |
-|---|---|---|
-| `computeCommitment(...)` view helper | Matches the off-chain `keccak256(abi.encodePacked(...))` computation used by the test harness | Confirms the on-chain hash formula matches what off-chain tooling (the frontend, in particular) must reproduce when building/verifying commitments |
+Verify that a bounty can be created successfully.
 
-## Out of scope for this test plan (manual / Advanced Track only)
+### Steps
 
-- Ritual TEE attestation behavior — no TEE runs locally; the Advanced Track
-  is a design document (see `ARCHITECTURE.md`), not an implementation.
-- Real Ritual LLM precompile response shapes/edge cases beyond the documented
-  `(bool hasError, bytes completionData, bytes, string errorMessage,
-  ConvoHistory)` tuple — these should be re-verified against a live Ritual
-  devnet before mainnet deployment.
+1. Connect owner wallet.
+2. Enter title.
+3. Enter rubric.
+4. Set submission deadline.
+5. Set reveal deadline.
+6. Set reward.
+7. Create bounty.
+
+### Expected Result
+
+- Bounty is created.
+- Reward is locked.
+- Status is **Commit Phase**.
+
+---
+
+## 2. Commit Answer
+
+### Goal
+
+Verify that participants submit only a commitment.
+
+### Steps
+
+1. Connect participant wallet.
+2. Enter answer.
+3. Submit commitment.
+
+### Expected Result
+
+- Transaction succeeds.
+- Commitment hash is stored.
+- Plaintext answer is NOT stored on-chain.
+- Answer and salt are stored locally.
+
+---
+
+## 3. Duplicate Commitment
+
+### Goal
+
+Ensure only one commitment is allowed.
+
+### Steps
+
+1. Submit one commitment.
+2. Attempt to submit another.
+
+### Expected Result
+
+Transaction reverts.
+
+---
+
+## 4. Commit After Deadline
+
+### Goal
+
+Ensure submission deadline is enforced.
+
+### Steps
+
+1. Wait until commit deadline.
+2. Attempt to submit.
+
+### Expected Result
+
+Transaction reverts.
+
+---
+
+## 5. Reveal Answer
+
+### Goal
+
+Verify successful reveal.
+
+### Steps
+
+1. Wait for reveal phase.
+2. Reveal original answer.
+3. Reveal original salt.
+
+### Expected Result
+
+- Transaction succeeds.
+- Commitment verification passes.
+- Answer becomes eligible for judging.
+
+---
+
+## 6. Invalid Reveal
+
+### Goal
+
+Verify commitment verification.
+
+### Steps
+
+Reveal using:
+
+- modified answer
+- modified salt
+
+### Expected Result
+
+Transaction reverts with commitment mismatch.
+
+---
+
+## 7. Reveal Before Commit Deadline
+
+### Goal
+
+Ensure reveal cannot happen early.
+
+### Steps
+
+Attempt reveal before commit phase ends.
+
+### Expected Result
+
+Transaction reverts.
+
+---
+
+## 8. Reveal After Reveal Deadline
+
+### Goal
+
+Ensure reveal window closes correctly.
+
+### Steps
+
+Attempt reveal after reveal deadline.
+
+### Expected Result
+
+Transaction reverts.
+
+---
+
+## 9. Judge Before Reveal Deadline
+
+### Goal
+
+Ensure judging starts only after reveals finish.
+
+### Steps
+
+Owner calls
+
+```
+judgeAll()
+```
+
+before reveal deadline.
+
+### Expected Result
+
+Transaction reverts.
+
+---
+
+## 10. Judge After Reveal Deadline
+
+### Goal
+
+Verify AI batch judging.
+
+### Steps
+
+1. Wait for reveal deadline.
+2. Execute
+
+```
+judgeAll()
+```
+
+### Expected Result
+
+- Ritual AI request is executed.
+- AI review is stored.
+- Ranking is displayed.
+
+---
+
+## 11. Finalize Winner
+
+### Goal
+
+Verify reward payout.
+
+### Steps
+
+1. Wait for AI review.
+2. Finalize winner.
+
+### Expected Result
+
+- Winner stored.
+- Reward transferred.
+- Bounty finalized.
+
+---
+
+## 12. Double Finalization
+
+### Goal
+
+Prevent duplicate payouts.
+
+### Steps
+
+Attempt finalization twice.
+
+### Expected Result
+
+Transaction reverts.
+
+---
+
+# Security Tests
+
+## Commitment Replay
+
+### Test
+
+Reuse another participant's commitment.
+
+### Expected
+
+Reveal fails because
+
+```
+msg.sender
+```
+
+is part of the commitment.
+
+---
+
+## Wrong Bounty Replay
+
+### Test
+
+Reuse commitment in another bounty.
+
+### Expected
+
+Reveal fails because
+
+```
+bountyId
+```
+
+is included in the hash.
+
+---
+
+## Unrevealed Submission
+
+### Test
+
+Commit without revealing.
+
+### Expected
+
+Submission is ignored during AI judging.
+
+---
+
+## Unauthorized Judge
+
+### Test
+
+Non-owner calls
+
+```
+judgeAll()
+```
+
+### Expected
+
+Transaction reverts.
+
+---
+
+## Unauthorized Finalize
+
+### Test
+
+Non-owner finalizes winner.
+
+### Expected
+
+Transaction reverts.
+
+---
+
+# Frontend Tests
+
+## Wallet Connection
+
+Verify
+
+- MetaMask connection
+- Ritual Wallet connection
+
+---
+
+## Commit UI
+
+Verify
+
+- button disabled without wallet
+- button disabled with empty answer
+- transaction status updates
+
+---
+
+## Reveal UI
+
+Verify
+
+- reveal only during reveal phase
+- local answer loads correctly
+- local data removed after successful reveal
+
+---
+
+## AI Review
+
+Verify
+
+- ranking displayed
+- scores displayed
+- summary displayed
+- recommended winner highlighted
+
+---
+
+## Finalization UI
+
+Verify
+
+- only owner can finalize
+- recommendation displayed
+- finalized state shown
+
+---
+
+# Manual End-to-End Test
+
+Execute the complete workflow.
+
+1. Create bounty.
+2. Submit commitment.
+3. Wait for reveal phase.
+4. Reveal answer.
+5. Wait for reveal deadline.
+6. Execute AI judging.
+7. Review AI ranking.
+8. Finalize winner.
+9. Verify reward transfer.
+
+Expected Result
+
+The entire lifecycle completes without errors.
+
+---
+
+# Edge Cases
+
+| Test | Expected |
+|-------|----------|
+| Empty answer | Rejected |
+| Duplicate commitment | Rejected |
+| Wrong salt | Rejected |
+| Wrong answer | Rejected |
+| Reveal too early | Rejected |
+| Reveal too late | Rejected |
+| Judge too early | Rejected |
+| Judge twice | Rejected |
+| Finalize twice | Rejected |
+| Unrevealed submission | Ignored |
+
+---
+
+# Success Criteria
+
+The implementation is considered correct if:
+
+- All deadlines are enforced.
+- Commitments cannot be forged.
+- Invalid reveals fail.
+- Unrevealed answers are excluded.
+- AI judges all revealed submissions together.
+- Only the owner can judge and finalize.
+- Only one reward is paid.
+- The frontend correctly reflects every lifecycle state.
